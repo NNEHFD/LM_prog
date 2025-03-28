@@ -23,7 +23,7 @@ experiment = function(n_hist, n_trial,
   
   if(n_hist >= 5000) {V = 3} else if(n_hist >= 1000) {V = 5} else {V = 10}
   
-  lrnr = PostCard::fit_best_learner(data = data_hist %>% 
+  lrnr = postcard::fit_best_learner(data = data_hist %>% 
                                     dplyr::select(Y, starts_with('W')), 
                                     formula = Y ~ .,
                                     cv_folds = V,
