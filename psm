@@ -1,0 +1,122 @@
+library(MatchIt)
+library(Matching)
+
+
+
+
+
+rct.psm <- function(data,
+                   data_hist,
+                   formula = Y ~ .,
+                   B = 100,
+                   ...){
+  
+  hist <- data_hist
+  hist <- hist[hist$A == 0, ] %>% dplyr::mutate(HC = 1) #HC = historical controls, and remove the historical treatment group patients, since the method is not developed for this.
+  rct <- data %>% dplyr::mutate(HC = 0)
+  data.match <- rbind(rct, hist)
+  
+  n <- nrow(rct)
+  n1 <- rct[rct$A == 1, ] %>% nrow()
+  n0 <- rct[rct$A == 0, ] %>% nrow()
+  n_hist <- hist %>%  nrow()
+
+  if (n1 <= n0) {
+    stop("The number of current treatment patients is lower than the number of
+           current control patients. In order to use PSM the number of current controls
+           should be lower than the number of current treatment patients.")
+  }
+  if (n_hist < n1 - n0) {
+    stop("There is not enough historical control partients to match with the current
+           treatment group patients to get 1:1 group sizes.")
+  }
+  
+
+  # Calculate propensity score
+  formula.psm <- stats::formula(paste0("A ~ ", paste0(colnames(data.match)[!colnames(data.match) %in% c("A", "Y", "HC")], collapse = "+")))
+  md <- MatchIt::matchit(f = formula.psm, data = data.match, ...)
+  data.match$prop_score <- md$distance
+  
+  # Find CC:AT group
+  CC_AT <- data.match[data.match$HC == 0, ]
+  # Swap treatment indicator, so treat = 1 for control, in order to match each patient in CC with one patient in AT
+  m <- Matching::Match(Tr = 1 - CC_AT$A,
+                       X = CC_AT$prop_score,
+                       replace = F,
+                       M = 1,
+                       distance.tolerance = 0)
+  
+  CC.AT <- CC_AT[c(m$index.treated, m$index.control), ]
+  AT <- CC_AT[-c(m$index.treated, m$index.control), ]
+  
+  # Find CC:HC group
+  CC_HC <- data.match[data.match$HC == 1 | (data.match$HC == 0 & data.match$A == 0), ]
+  m <- Matching::Match(Tr = 1 - CC_HC$HC,
+                       X = CC_HC$prop_score,
+                       replace = F,
+                       M = 1,
+                       distance.tolerance = 0)
+  
+  CC.HC <- CC_HC[c(m$index.treated, m$index.control), ]
+  
+  # Find AT:HC group (using leftout treated, not matched to CC)
+  AT_HC <- AT %>%
+    rbind(data.match[data.match$HC == 1, ])
+  m <- Matching::Match(Tr = AT_HC$A,
+                       X = AT_HC$prop_score,
+                       replace = F,
+                       M = 1,
+                       distance.tolerance = 0)
+  
+  AT.HC <- AT_HC[c(m$index.treated, m$index.control), ]
+  
+  # Estimate bias in HC
+  formula.input <- list(...)$formula
+  if (!is.null(formula.input)) {
+    my_terms <- attr(stats::terms(formula.input), "term.labels")
+  } else {
+    my_terms <- attr(stats::terms(formula.psm), "term.labels")
+  }
+  formula.bias  <- stats::formula(paste0("Y ~ HC +", paste0(my_terms, collapse = "+")))
+  bias_sum <- stats::lm(formula.bias, data = CC.HC) %>% summary
+  sigma2 <- bias_sum$sigma^2
+  
+  n_c <- nrow(CC.HC)
+  p <- length(my_terms)
+  
+  # Sampling estimates s^2 of sigma^2
+  s2 <- extraDistr::rinvchisq(n = B, nu = n_c - p - 2, tau = sigma2)
+  # Finding conditional variance of bias estimate
+  eta_var <- stats::coef(bias_sum)["HC", "Std. Error"]^2 / sigma2 * s2
+  # Sample bias estimates using conditional variances
+  bias_est <- stats::rnorm(B, stats::coef(bias_sum)["HC", "Estimate"], eta_var)
+  
+  # Subtract bias from response of HC patients
+  data_m <- data_m.b <- rbind(AT.HC, CC.AT)
+  
+  formula.lm <- formula
+  
+  boot_est <- function(x){
+    data_m.b$Y[data_m.b$HC == 1] <- data_m$Y[data_m$HC == 1] - x
+    fit_b <- stats::lm(formula.lm, data = data_m.b) %>% summary %>% stats::coef()
+    list(estimate.b = fit_b["A", "Estimate"], std.err.b = fit_b["A", "Std. Error"])
+  }
+  
+  l <- lapply(bias_est, FUN = boot_est)
+  
+  dat <- matrix(unlist(l), ncol = 2, byrow = T) %>%
+    as.data.frame()
+  colnames(dat) <- c("estimate.b", "std.err.b")
+  
+  estimate <- mean(dat$estimate.b)
+  std.err <- sqrt(mean(dat$std.err.b^2) + (1 + 1/B) * 1/(B - 1) * sum((estimate - dat$estimate.b)^2))
+  
+  res <- tibble('Estimate' = estimate, 'Std. Error' = std.err)
+  
+  
+  return(res)
+}
+
+
+
+
