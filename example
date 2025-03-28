@@ -1,0 +1,263 @@
+# -------------------------------------------------------------------------------------------
+# Example
+# -------------------------------------------------------------------------------------------
+
+
+# Load libraries ---------------------------------------------------------
+library(data.table)
+library(tidyverse)
+library(tidymodels)
+library(magrittr)
+library(ggplot2)
+library(cowplot)
+
+
+db <- NNaccess::nnaccess(project = "students", trial = "ehfd_phd", instance = "current")
+
+
+# Outcome specification for DGP ---------------------------
+outcome_dgp <- function(dgp_string = 'constant') {
+  if (dgp_string == 'constant') {
+    mu0 <<- function(X) {
+      X %$%
+        {
+          0.5 +
+            2 * sin(abs(W1))
+        }
+    }
+    
+    mu1 <<- function(X) {
+      X %$%
+        {
+          1.5 + 2 * sin(abs(W1))
+        }
+    }
+    
+  invisible()
+  }
+}
+
+
+# data generating process -------------------------------------------------
+dgp = function(n,
+               p = 1) {
+  
+  W1 <- runif(n, min = -2, max = 2)
+  
+  # Generate the full dataset
+    tibble(W1) %>%
+      inset("m0", value = mu0(.)) %>%
+      inset("m1", value = mu1(.)) %>%
+      mutate(
+        A = rbinom(n, 1, prob = 1 / 2),
+        Y0 = m0 + rnorm(n,sd=0.4),
+        Y1 = m1 + rnorm(n,sd=0.4),
+        Y = ifelse(A, Y1, Y0)
+      )
+    
+}
+  
+# Generate data test ---------------------------------------------------------
+set.seed(127455843)
+outcome_dgp()
+
+dat <- dgp(n = 500)
+
+#fit data 
+model <- lm(Y ~ A + W1, data = dat)
+
+
+
+color_mapping <- c("0" = "grey70", "1" = "deepskyblue2")
+
+p1 <- ggplot(dat, aes(x = W1, y = Y, color = factor(A))) +
+  geom_point() +
+  geom_abline(aes(intercept = coef(model)[1], slope = coef(model)["W1"]), linetype = "solid", color = "grey40", linewidth = 1.1) +
+  geom_abline(aes(intercept = coef(model)[1] + coef(model)["A"], slope = coef(model)["W1"]), linetype = "solid", color = "blue4", linewidth = 1.1) +
+  xlab("W1") +
+  ylab("Y") +
+  labs(color = "Treatment") +
+  scale_color_manual(values = color_mapping) +
+  theme_minimal()
+
+# Find a prognostic score from hist data 
+
+# set up the pre-processing of the work flow
+get_preproc_names = function(wf) {
+  wf %>%
+    pull(wflow_id) %>%
+    str_split("_") %>%
+    map_chr(~.[1]) %>%
+    unique()
+}
+
+# function to add learners with the pre-processing
+add_learners = function(preproc, learners) {
+  wf = workflow_set(
+    preproc = preproc,
+    models = learners %>%
+      map(~.$model)
+  )
+  
+  for (learner_name in names(learners)){
+    for (preproc_name in get_preproc_names(wf)) {
+      wf %<>%
+        option_add(
+          id = str_c(preproc_name, "_", learner_name), # paste0()
+          grid = learners[[learner_name]]$grid
+        )
+    }
+  }
+  wf
+}
+
+# default_learners list defined by the model, grid for tuning if needed
+default_learners = list( 
+  mars = list(
+    model = mars(mode = "regression", prod_degree = 3) %>%
+      set_engine("earth"),
+    grid = NULL
+  ),
+  lm = list(
+    model = linear_reg() %>%
+      set_engine("lm"),
+    grid = NULL
+  ),
+  gbt = list(
+    model = boost_tree(
+      mode = "regression",
+      trees = tune("trees"),
+      tree_depth = tune("tree_depth"),
+      learn_rate = 0.1
+    ) %>%
+      set_engine("xgboost"),
+    grid = cross_df(list(
+      trees = seq.int(25, 500, by=25),
+      tree_depth = c(3)
+    ))
+  )
+)
+
+linear_learner = list( 
+  lm = list(
+    model = linear_reg() %>%
+      set_engine("lm"),
+    grid = NULL
+  )
+)
+
+# define preprocessing lists
+wf_prog_preproc = list(
+  prog=Y~.,  # with prog
+  noProg=Y~.-prog  # without
+)
+
+wf_no_prog_preproc = list(
+  noProg=Y~.
+) 
+
+
+# K fold cross validation with recipe -------------------------------------
+
+get_best_learner <- function(
+    resamples,
+    learners = default_learners,
+    verbose = T
+) {
+  
+  if ('prog' %in% names(resamples$splits[[1]]$data)) {
+    wfs = wf_prog_preproc %>% add_learners(learners)
+  } else {
+    wfs = wf_no_prog_preproc %>% add_learners(learners)
+  }
+  
+  fit_learners = wfs %>%
+    workflow_map(
+      resamples = resamples,
+      metrics = metric_set(yardstick::rmse)
+    )
+  
+  best_learner_name = fit_learners %>%
+    rank_results(rank_metric = 'rmse') %>% 
+    dplyr::select(wflow_id, model, .config, rmse=mean, rank) %>%
+    filter(row_number() == 1) %>%
+    pull(wflow_id) 
+  
+  if (verbose){
+    print(best_learner_name)
+  }
+  
+  
+  best_params = fit_learners %>%
+    extract_workflow_set_result(best_learner_name) %>%
+    select_best(metric='rmse')
+  
+  fit_learners %>%
+    extract_workflow(best_learner_name) %>%
+    finalize_workflow(best_params)
+}
+
+
+### use the model 
+
+
+dat_his <- dgp(n = 3000) %>% mutate(Y = Y0)  %>%
+  dplyr::select(Y, starts_with('W'))
+
+V = 5
+
+lrnr = rsample::vfold_cv(dat_his, v = V) %>%
+  get_best_learner() %>%
+  fit(dat_his)
+
+dat %<>% mutate(prog = predict(lrnr, dat %>% 
+                                        dplyr::select(Y, starts_with('W'))) %>% 
+                         pull(.pred))
+
+
+
+#fit data 
+model2 <- lm(Y ~ A + W1 + prog, data = dat)
+
+color_mapping <- c("0" = "grey70", "1" = "deepskyblue2")
+
+p2 <- ggplot(dat, aes(x = prog, y = Y, color = factor(A))) +
+  geom_point() +
+  geom_abline(aes(intercept = coef(model2)[1], slope = coef(model2)["prog"]), linetype = "solid", color = "grey40", linewidth = 1.1) +
+  geom_abline(aes(intercept = coef(model2)[1] + coef(model2)["A"], slope = coef(model2)["prog"]), linetype = "solid", color = "blue4", linewidth = 1.1) +
+  xlab("Estimated prognostic score") +
+  ylab("Y") +
+  labs(color = "Treatment") +
+  scale_color_manual(values = color_mapping) +
+  theme_minimal()
+
+combined_legend <- cowplot::get_legend(p2)
+
+combined_plot <- plot_grid(p1  + theme(legend.position="none"), 
+                      p2  + theme(legend.position="none"),
+                      labels = c('A', 'B'), label_size = 20, nrow = 1
+)
+
+final_plot <- plot_grid(combined_plot, combined_legend, ncol = 2, rel_heights = c(1, 0.1), rel_widths = c(18, 1))
+
+
+db$exportOutput(final_plot, "example", Format = "pdf", FgHeight = 14, FgWidth = 30)
+db$exportOutput(final_plot, "example", Format = "jpeg", FgHeight = 14, FgWidth = 30)
+
+
+# Results from model
+linear_fit1 <- estimatr::lm_robust(Y ~ A + W1, dat)
+est_linear = linear_fit1$coefficients[['A']]
+se_linear = linear_fit1$std.error[['A']]
+
+linear_fit2 <- estimatr::lm_robust(Y ~ A + W1 + prog, dat)
+est_linear2 = linear_fit2$coefficients[['A']]
+se_linear2 = linear_fit2$std.error[['A']]
+
+# Create confidence intervals with quantile from t-distribution 
+ci_linear = c(est_linear - qt(0.975, df = nrow(dat) - 3) * se_linear, 
+              est_linear + qt(0.975, df = nrow(dat) - 3) * se_linear)
+
+ci_linear2 = c(est_linear2 - qt(0.975, df = nrow(dat) - 4) * se_linear2, 
+              est_linear2 + qt(0.975, df = nrow(dat) - 4) * se_linear2)
+
