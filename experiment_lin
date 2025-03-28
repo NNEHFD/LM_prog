@@ -1,0 +1,114 @@
+# -------------------------------------------------------------------------------------------
+# Purpose: Function for running the experiment 
+#
+# Dependencies: 
+#
+# Output: function for finding the unadjusted estimator and the glm plug-in estimator
+#
+# -------------------------------------------------------------------------------------------
+
+experiment = function(n_hist, n_trial,
+                      p=p,
+                      shift_W1=shift_W1, # historical only
+                      shift_U=shift_U, # historical only
+                      dgp_string =c("constant")) {
+  
+  outcome_dgp(dgp_string)
+  data_hist = dgp(n = n_hist,
+                  p = p, 
+                  shift_W1 = shift_W1,
+                  shift_U = shift_U) %>% 
+    mutate(Y = Y0) %>%
+    dplyr::select(Y, starts_with('W'))
+  
+  if(n_hist >= 5000) {V = 3} else if(n_hist >= 1000) {V = 5} else {V = 10}
+  
+  lrnr = PostCard::fit_best_learner(data = data_hist %>% 
+                                    dplyr::select(Y, starts_with('W')), 
+                                    formula = Y ~ .,
+                                    cv_folds = V,
+                                    verbose = 0)
+  
+  data_trial = dgp(n = n_trial,
+                   p = p, 
+                   shift_W1 = 0,
+                   shift_U = 0) %>%
+    dplyr::select(Y, A, starts_with('W'), m0) #m0 is the oracle prognostic score 
+  
+  data_trial %<>% mutate(prog = predict(lrnr, data_trial %>% 
+                                          dplyr::select(Y, starts_with('W'))) %>% 
+                           pull(.pred))  # add the estimated prognostic score to the data
+  
+
+  bind_rows(
+    #unadjusted 
+    data_trial %>% 
+      dplyr::select(-prog, -m0) %>%
+      rctglm(formula = Y ~ A,
+             exposure_indicator = A,
+             exposure_prob = 3/4,
+             family = "gaussian",
+             verbose = 0,
+             cv_variance = FALSE) %>% 
+      estimand() %>% 
+      mutate(prog="none", estr = "unadjusted"),
+    #No prognostic score but lm adjusted with W
+    data_trial %>% 
+      dplyr::select(-prog, -m0) %>%
+      rctglm(formula = Y ~ .,
+             exposure_indicator = A,
+             exposure_prob = 3/4,
+             family = "gaussian",
+             verbose = 0,
+             cv_variance = FALSE) %>% 
+      estimand() %>% 
+      mutate(prog="none", estr = "lm"),
+    # Random/non-informative prognostic score 
+    data_trial %>% 
+      dplyr::select(-prog, -m0) %>%
+      mutate(prog = runif(nrow(data_trial), min = min(data_hist$Y), max = max(data_hist$Y))) %>% 
+      rctglm(formula = Y ~ .,
+             exposure_indicator = A,
+             exposure_prob = 3/4,
+             family = "gaussian",
+             verbose = 0,
+             cv_variance = FALSE) %>% 
+      estimand() %>% 
+      mutate(prog="fit random", estr = "lm"),
+    # PSM-RCT
+    data_trial %>%
+      dplyr::select(-prog, -m0) %>%
+      rct.psm(formula = Y ~ ., data_hist = data_hist %>%
+                mutate(A = 0)) %>%
+      mutate(prog="psm", estr = "lm"),
+    #Prognostic score
+    data_trial %>% 
+      dplyr::select(-m0) %>%
+      rctglm(formula = Y ~ .,
+             exposure_indicator = A,
+             exposure_prob = 3/4,
+             family = "gaussian",
+             verbose = 0,
+             cv_variance = FALSE) %>% 
+      estimand() %>% 
+      mutate(prog="fit", estr = "lm"),
+    # Oracle prognostic score
+    data_trial %>% 
+      dplyr::select(m0, A, Y) %>%
+      rctglm(formula = Y ~ .,
+             exposure_indicator = A,
+             exposure_prob = 3/4,
+             family = "gaussian",
+             verbose = 0,
+             cv_variance = FALSE) %>% 
+      estimand() %>% 
+      mutate(prog="oracle", estr = "lm")
+  ) %>%
+    mutate(
+      n_hist = n_hist,
+      n_trial = n_trial,
+      p = p,
+      shift_W1 = shift_W1,
+      shift_U = shift_U
+    )
+}
