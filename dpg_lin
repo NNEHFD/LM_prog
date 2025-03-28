@@ -6,14 +6,8 @@
 # Output: Functions for generating datasets for different DPGs, i.e. outcome_dpg and dgp
 #
 # -------------------------------------------------------------------------------------------
-## install PostCard package
-#devtools::install("~/BOS/PostCard")
-library(PostCard)
-
 #Load library
-# library(PostCard)
-# withr::local_seed(1395878)
-# withr::local_options(list(PostCard.verbose = 0))
+library(postcard)
 library(data.table)
 library(tidyverse)
 library(tidymodels)
