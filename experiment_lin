@@ -25,7 +25,7 @@ experiment = function(n_hist, n_trial,
   
   lrnr = postcard::fit_best_learner(data = data_hist %>% 
                                     dplyr::select(Y, starts_with('W')), 
-                                    formula = Y ~ .,
+                                    preproc = list(mod = Y ~ .),
                                     cv_folds = V,
                                     verbose = 0)
   
@@ -44,36 +44,36 @@ experiment = function(n_hist, n_trial,
     #unadjusted 
     data_trial %>% 
       dplyr::select(-prog, -m0) %>%
-      rctglm(formula = Y ~ A,
+      postcard::rctglm(formula = Y ~ A,
              exposure_indicator = A,
              exposure_prob = 3/4,
              family = "gaussian",
              verbose = 0,
              cv_variance = FALSE) %>% 
-      estimand() %>% 
+      postcard::estimand() %>% 
       mutate(prog="none", estr = "unadjusted"),
     #No prognostic score but lm adjusted with W
     data_trial %>% 
       dplyr::select(-prog, -m0) %>%
-      rctglm(formula = Y ~ .,
+      postcard::rctglm(formula = Y ~ .,
              exposure_indicator = A,
              exposure_prob = 3/4,
              family = "gaussian",
              verbose = 0,
              cv_variance = FALSE) %>% 
-      estimand() %>% 
+      postcard::estimand() %>% 
       mutate(prog="none", estr = "lm"),
     # Random/non-informative prognostic score 
     data_trial %>% 
       dplyr::select(-prog, -m0) %>%
       mutate(prog = runif(nrow(data_trial), min = min(data_hist$Y), max = max(data_hist$Y))) %>% 
-      rctglm(formula = Y ~ .,
+      postcard::rctglm(formula = Y ~ .,
              exposure_indicator = A,
              exposure_prob = 3/4,
              family = "gaussian",
              verbose = 0,
              cv_variance = FALSE) %>% 
-      estimand() %>% 
+      postcard::estimand() %>% 
       mutate(prog="fit random", estr = "lm"),
     # PSM-RCT
     data_trial %>%
@@ -84,24 +84,24 @@ experiment = function(n_hist, n_trial,
     #Prognostic score
     data_trial %>% 
       dplyr::select(-m0) %>%
-      rctglm(formula = Y ~ .,
+      postcard::rctglm(formula = Y ~ .,
              exposure_indicator = A,
              exposure_prob = 3/4,
              family = "gaussian",
              verbose = 0,
              cv_variance = FALSE) %>% 
-      estimand() %>% 
+      postcard::estimand() %>% 
       mutate(prog="fit", estr = "lm"),
     # Oracle prognostic score
     data_trial %>% 
       dplyr::select(m0, A, Y) %>%
-      rctglm(formula = Y ~ .,
+      postcard::rctglm(formula = Y ~ .,
              exposure_indicator = A,
              exposure_prob = 3/4,
              family = "gaussian",
              verbose = 0,
              cv_variance = FALSE) %>% 
-      estimand() %>% 
+      postcard::estimand() %>% 
       mutate(prog="oracle", estr = "lm")
   ) %>%
     mutate(
