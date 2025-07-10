@@ -6,8 +6,12 @@
 # Output: Functions for generating datasets for different DPGs, i.e. outcome_dpg and dgp
 #
 # -------------------------------------------------------------------------------------------
-#Load library
 library(postcard)
+
+#Load library
+# library(PostCard)
+# withr::local_seed(1395878)
+# withr::local_options(list(PostCard.verbose = 0))
 library(data.table)
 library(tidyverse)
 library(tidymodels)
