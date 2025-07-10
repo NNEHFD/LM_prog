@@ -33,115 +33,115 @@ print("init")
 # -------------------------------------------------------------------------------------------
 # Performance in different scenarios
 # -------------------------------------------------------------------------------------------
+#
+# # Constant treatment effect - no shift
+# params = expand_grid(
+#   n_hist = c(4000),
+#   n_trial = c(200),
+#   p = c(7),
+#   shift_W1 = c(0), # shift in historical data only
+#   shift_U = c(0), # shift in historical data only
+#   dgp_string = c("constant")
+# )
+# results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
+# results %<>% purrr::list_flatten() %>% purrr::list_rbind()
+#
+# db$output_datasets("data_constant_lin", results, ext = "rds")
+# print("constant")
+#
+#
+# # Heterogeneous - no shift
+# params = expand_grid(
+#   n_hist = c(4000),
+#   n_trial = c(200),
+#   p = c(7),
+#   shift_W1 = c(0),
+#   shift_U = c(0),
+#   dgp_string = c("heterogeneous")
+# )
+# results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
+# results %<>% purrr::list_flatten() %>% purrr::list_rbind()
+#
+# db$output_datasets("data_het_lin", results, ext = "rds")
+# print("het")
+#
+# # Heterogeneous - observable shift in W1 (small and large)
+# params = expand_grid(
+#   n_hist = c(4000),
+#   n_trial = c(200),
+#   p = c(7),
+#   shift_W1 = c(-3, -5),
+#   shift_U = c(0),
+#   dgp_string = c("heterogeneous")
+# )
+# results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
+# results %<>% purrr::list_flatten() %>% purrr::list_rbind()
+#
+# db$output_datasets("data_obs_shift_lin", results, ext = "rds")
+#
+# print("obs_shift")
+#
+# # Heterogeneous - unobservable shift in U (small and large)
+# params = expand_grid(
+#   n_hist = c(4000),
+#   n_trial = c(200),
+#   p = c(7),
+#   shift_W1 = c(0),
+#   shift_U = c(.5, 1),
+#   dgp_string = c("heterogeneous")
+# )
+# results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
+# results %<>% purrr::list_flatten() %>% purrr::list_rbind()
+#
+# db$output_datasets("data_unobs_shift_lin", results, ext = "rds")
+#
+# print("unobs_shift")
+#
+# # -------------------------------------------------------------------------------------------
+# # Performance varying sample size in heterogeneous treatment effect scenario
+# # -------------------------------------------------------------------------------------------
+#
+# # varying both historical and trial data size
+# inc <- c(50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
+#          170, 180, 190, 200, 225, 250, 275, 300, 325, 350, 375, 400)
+#
+#
+# for (i in 1:length(inc)) {
+#   params = expand_grid(
+#     n_hist = inc[i]*10,
+#     n_trial = inc[i],
+#     p = c(7),
+#     shift_W1 = c(0),
+#     shift_U = c(0),
+#     dgp_string = c("heterogeneous")
+#   )
+#   results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
+#   results %<>% purrr::list_flatten() %>% purrr::list_rbind()
+#
+#   db$output_datasets(paste0("lin_data_vary_both_", inc[i]), results, ext = "rds")
+# }
+#
+#
+# print("vary_both")
 
-# Constant treatment effect - no shift
-params = expand_grid(
-  n_hist = c(4000),
-  n_trial = c(200),
-  p = c(7),
-  shift_W1 = c(0), # shift in historical data only
-  shift_U = c(0), # shift in historical data only
-  dgp_string = c("constant")
-)
-results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
-results %<>% purrr::list_flatten() %>% purrr::list_rbind()
-
-db$output_datasets("data_constant_lin", results, ext = "rds")
-print("constant")
-
-
-# Heterogeneous - no shift
-params = expand_grid(
-  n_hist = c(4000),
-  n_trial = c(200),
-  p = c(7),
-  shift_W1 = c(0),
-  shift_U = c(0),
-  dgp_string = c("heterogeneous")
-)
-results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
-results %<>% purrr::list_flatten() %>% purrr::list_rbind()
-
-db$output_datasets("data_het_lin", results, ext = "rds")
-print("het")
-
-# Heterogeneous - observable shift in W1 (small and large)
-params = expand_grid(
-  n_hist = c(4000),
-  n_trial = c(200),
-  p = c(7),
-  shift_W1 = c(-3, -5),
-  shift_U = c(0),
-  dgp_string = c("heterogeneous")
-)
-results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
-results %<>% purrr::list_flatten() %>% purrr::list_rbind()
-
-db$output_datasets("data_obs_shift_lin", results, ext = "rds")
-
-print("obs_shift")
-
-# Heterogeneous - unobservable shift in U (small and large)
-params = expand_grid(
-  n_hist = c(4000),
-  n_trial = c(200),
-  p = c(7),
-  shift_W1 = c(0),
-  shift_U = c(.5, 1),
-  dgp_string = c("heterogeneous")
-)
-results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
-results %<>% purrr::list_flatten() %>% purrr::list_rbind()
-
-db$output_datasets("data_unobs_shift_lin", results, ext = "rds")
-
-print("unobs_shift")
-
-# -------------------------------------------------------------------------------------------
-# Performance varying sample size in heterogeneous treatment effect scenario
-# -------------------------------------------------------------------------------------------
-
-# varying both historical and trial data size
-inc <- c(50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
-         170, 180, 190, 200, 225, 250, 275, 300, 325, 350, 375, 400)
-
-
-for (i in 1:length(inc)) {
-  params = expand_grid(
-    n_hist = inc[i]*10,
-    n_trial = inc[i],
-    p = c(7),
-    shift_W1 = c(0),
-    shift_U = c(0),
-    dgp_string = c("heterogeneous")
-  )
-  results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
-  results %<>% purrr::list_flatten() %>% purrr::list_rbind()
-
-  db$output_datasets(paste0("lin_data_vary_both_", inc[i]), results, ext = "rds")
-}
-
-
-print("vary_both")
-
-inc <- c(50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
-         170, 180, 190, 200, 225, 250, 275, 300, 325, 350, 375, 400)
-
-# varying trial data size
-params = expand_grid(
-  n_hist = c(4000),
-  n_trial = inc,
-  p = c(7),
-  shift_W1 = c(0),
-  shift_U = c(0),
-  dgp_string = c("heterogeneous")
-)
-results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
-results %<>% purrr::list_flatten() %>% purrr::list_rbind()
-
-db$output_datasets("lin_data_vary_trial", results, ext = "rds")
-
-print("vary_trial")
+# inc <- c(50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
+#          170, 180, 190, 200, 225, 250, 275, 300, 325, 350, 375, 400)
+#
+# # varying trial data size
+# params = expand_grid(
+#   n_hist = c(4000),
+#   n_trial = inc,
+#   p = c(7),
+#   shift_W1 = c(0),
+#   shift_U = c(0),
+#   dgp_string = c("heterogeneous")
+# )
+# results = 1:N %>% future_map( ~ params %>% pmap(experiment), .options = furrr_options(seed = 3021377, scheduling = FALSE))
+# results %<>% purrr::list_flatten() %>% purrr::list_rbind()
+#
+# db$output_datasets("lin_data_vary_trial", results, ext = "rds")
+#
+# print("vary_trial")
 
 # varying historical data size
 
@@ -150,7 +150,7 @@ inc <- c(50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
 
 params = expand_grid(
   n_hist = inc*10,
-  n_trial = c(100),
+  n_trial = c(200),
   p = c(7),
   shift_W1 = c(0),
   shift_U = c(0),
